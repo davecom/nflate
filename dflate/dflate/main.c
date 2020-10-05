@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 
 // https://tools.ietf.org/html/rfc1951
 // https://tools.ietf.org/html/rfc1952
@@ -77,8 +78,9 @@ bitstream *create_bitstream(uint8_t *data, size_t length) {
     return bs;
 }
 
+// READ FROM LSB TO MSB along BYTE boundaries
 bool read_bit(bitstream *bs) {
-    return ((bs->data[bs->bitIndex / 8]) >> (7 - (bs->bitIndex++ % 8))) & 1;
+    return ((bs->data[bs->bitIndex / 8]) >> (bs->bitIndex++ % 8)) & 1;
 }
 
 //read up to 64 bits at a time
@@ -90,6 +92,81 @@ uint64_t read_bits(bitstream *bs, int n) {
     return bits;
 }
 
+#define MAX_BITS 16
+#define NUM_LIT_LEN_SYMBOLS 288
+#define NO_SYMBOL 32767
+
+// code_to_symbol maps code (0-32767) -> symbol, puts a stop symbol if it's not there
+// code adated from RFC 1951 section 3.2.2
+// https://tools.ietf.org/html/rfc1951
+void generate_tables(uint8_t *code_lengths, uint16_t *code_to_symbol, int num_symbols) {
+    int bl_count[MAX_BITS];
+    for (int i = 0; i < num_symbols; i++) {
+        bl_count[code_lengths[i]]++;
+    }
+    
+    uint16_t code = 0;
+    bl_count[0] = 0;
+    uint16_t next_code[MAX_BITS + 1];
+    for (uint16_t bits = 1; bits <= MAX_BITS; bits++) {
+        code = (code + bl_count[bits-1]) << 1;
+        next_code[bits] = code;
+    }
+    
+    // symbol_to_code maps symbol (0-num_symbols) -> code
+//    uint16_t *symbol_to_code = calloc(num_symbols, 2);
+//    for (int n = 0; n < num_symbols; n++) {
+//        uint8_t len = code_lengths[n];
+//        if (len != 0) {
+//            symbol_to_code[n] = next_code[len];
+//            next_code[len]++;
+//        }
+//    }
+    
+    code_to_symbol = calloc(32768, 2);
+    memset(code_to_symbol, NO_SYMBOL, 32768);
+    for (int n = 0; n < num_symbols; n++) {
+        uint8_t len = code_lengths[n];
+        if (len != 0) {
+            uint16_t code = next_code[len];
+            code_to_symbol[code] = n;
+            next_code[len]++;
+        }
+    }
+    
+    // free(symbol_to_code);
+}
+
+uint8_t *nflate_fixed_block(bitstream *bs) {
+    uint8_t *output = NULL;
+    
+    uint8_t *code_lengths = calloc(NUM_LIT_LEN_SYMBOLS, 1);
+
+    uint16_t *code_to_symbol = NULL;
+    // build fixed table
+    for (int i = 0; i <= 287; i++) {
+        if (i < 144) {
+            code_lengths[i] = 8;
+        } else if (i < 256) {
+            code_lengths[i] = 9;
+        } else if (i < 280) {
+            code_lengths[i] = 7;
+        } else { // i < 288
+            code_lengths[i] = 8;
+        }
+    }
+    
+    generate_tables(code_lengths, code_to_symbol, NUM_LIT_LEN_SYMBOLS);
+    
+    // expand huffman codes based on code_to_symbol
+    // read 1 bit at a time and if the item is in the table, you found it
+    // you did not find it if you found NO_SYMBOL
+    
+    free(code_lengths);
+    free(code_to_symbol);
+    return output;
+}
+
 uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
     uint8_t *reconstituted = NULL;
     
@@ -98,6 +175,22 @@ uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
     // read block header
     bool BFINAL = read_bit(bs); // is this the last block?
     uint64_t BTYPE = read_bits(bs, 2);
+    
+    switch (BTYPE) {
+        case 0b00: // uncompressed
+            break;
+        case 0b01: // fixed huffman codes
+        {
+            uint8_t *block_result = nflate_fixed_block(bs);
+            printf("%s", block_result);
+            break;
+        }
+        case 0b10: // dynamic huffman codes
+            break;
+        case 0b11: // reserved
+            fprintf(stderr, "Error, improper block header.");
+            break;
+    }
     
     return reconstituted;
 }
@@ -216,11 +309,21 @@ gzipfile *read_gzipfile(const char *name) {
         fprintf(stderr, "Error seeking to end of data block.");
     }
     long int data_end = ftell(input);
-    fseek(input, data_start, SEEK_SET);
+    if (fseek(input, data_start, SEEK_SET) != 0) {
+        fprintf(stderr, "Error seeking to start of data block.");
+    }
     long int data_size = data_end - data_start;
     gzf->data = malloc(data_size);
+    if (!gzf->data) {
+        fprintf(stderr, "Error allocating memory for data.");
+        goto error;
+    }
     gzf->data_length = data_size;
-    fread(gzf->data, data_size, 1, input);
+    size_t amountRead = fread(gzf->data, 1, data_size, input);
+    if (amountRead != data_size) {
+        fprintf(stderr, "Error reading data from file.");
+        goto error;
+    }
     fread(&gzf->CRC32, 4, 1, input);
     fread(&gzf->ISIZE, 4, 1, input);
     
