@@ -92,15 +92,24 @@ uint64_t read_bits(bitstream *bs, int n) {
     return bits;
 }
 
+// reversed, so in same ordering as originally in within the byte
+uint64_t read_bits_rev(bitstream *bs, int n) {
+    uint64_t bits = 0;
+    for (int i = 0; i < n; i++) {
+        bits |= (read_bit(bs) << i);
+    }
+    return bits;
+}
+
 #define MAX_BITS 16
 #define NUM_LIT_LEN_SYMBOLS 288
-#define NO_SYMBOL 32767
+#define NO_SYMBOL 65535
 
 // code_to_symbol maps code (0-32767) -> symbol, puts a stop symbol if it's not there
 // code adated from RFC 1951 section 3.2.2
 // https://tools.ietf.org/html/rfc1951
-void generate_tables(uint8_t *code_lengths, uint16_t *code_to_symbol, int num_symbols) {
-    int bl_count[MAX_BITS];
+void generate_tables(uint8_t *code_lengths, uint16_t **code_to_symbol, int num_symbols) {
+    int bl_count[MAX_BITS] = {0};
     for (int i = 0; i < num_symbols; i++) {
         bl_count[code_lengths[i]]++;
     }
@@ -123,28 +132,137 @@ void generate_tables(uint8_t *code_lengths, uint16_t *code_to_symbol, int num_sy
 //        }
 //    }
     
-    code_to_symbol = calloc(32768, 2);
-    memset(code_to_symbol, NO_SYMBOL, 32768);
+    *code_to_symbol = calloc(65536, 2);
+    if (*code_to_symbol == NULL) {
+        fprintf(stderr, "Error allocating memory for code_to_symbol.");
+    }
+    
+    
+    memset(*code_to_symbol, NO_SYMBOL, 65536 * 2);
     for (int n = 0; n < num_symbols; n++) {
         uint8_t len = code_lengths[n];
         if (len != 0) {
             uint16_t code = next_code[len];
-            code_to_symbol[code] = n;
+            (*code_to_symbol)[code] = n;
+            //printf("%d \t %d \t %d\n", code, n, (*code_to_symbol)[code]);
             next_code[len]++;
         }
     }
+    //printf("%d \t %d\n", 64, (*code_to_symbol)[64]);
     
     // free(symbol_to_code);
 }
 
-uint8_t *nflate_fixed_block(bitstream *bs) {
+#define END_OF_BLOCK 256
+
+uint8_t *expand(bitstream *bs, uint16_t *code_to_symbol, bool fixed_distances, size_t *block_length, uint16_t *dist_code_to_symbol) {
+    uint8_t *output = NULL;
+    // expand huffman codes based on code_to_symbol
+    // read 1 bit at a time and if the item is in the table, you found it
+    // you did not find it if you found NO_SYMBOL
+    
+    size_t buffer_length = 10; // initial amount
+    output = malloc(buffer_length);
+    size_t actual_length = 0;
+    uint16_t last_symbol = 0;
+    do {
+        uint16_t bits = 0;
+        // commented out sections are if reversed
+//        uint8_t num_bits = 0;
+        do {
+//            bits |= (read_bit(bs) << num_bits);
+//            num_bits++;
+            bits = (bits << 1) | read_bit(bs);
+            last_symbol = code_to_symbol[bits];
+        } while (last_symbol == NO_SYMBOL);
+        
+        if (last_symbol < 256) { // literal
+            if (actual_length == buffer_length) {
+                buffer_length *= 2;
+                output = realloc(output, buffer_length);
+            }
+            output[actual_length] = (uint8_t)last_symbol;
+            actual_length++;
+        } else if (last_symbol == 256) {
+            break; // END_OF_BLOCK symbol
+        } else if (last_symbol < 286) { // length, distance pair
+            // figure out length
+            int length = 0;
+            if (last_symbol < 265) {
+                length = last_symbol - 257 + 3;
+            } else if (last_symbol < 285) {
+                int difference = last_symbol - 257;
+                int extra_bits = (difference / 4) - 1;
+                // length = 2 ^ (extra_bits + 2) + (2 ^ extra_bits * (difference % 4)) + 3
+                int additional_amount = (int)read_bits_rev(bs, extra_bits);
+                int starter_length = (1 << (extra_bits + 2)) + ((1 << extra_bits) * (difference % 4)) + 3;
+                length = starter_length + additional_amount;
+            } else if (last_symbol == 285) {
+                length = 258;
+            } else {
+                fprintf(stderr, "Error, found unexpected symbol > 285.");
+            }
+            
+            // figure out distance
+            uint16_t distance_code = 0;
+            int distance = 0;
+            if (fixed_distances) {
+                distance_code = (uint8_t)read_bits_rev(bs, 5);
+            } else { // dynamic distance must be read
+                uint16_t dist_bits = 0;
+                do {
+        //            bits |= (read_bit(bs) << num_bits);
+        //            num_bits++;
+                    dist_bits = (dist_bits << 1) | read_bit(bs);
+                    distance_code = dist_code_to_symbol[dist_bits];
+                } while (distance_code == NO_SYMBOL);
+            }
+            if (distance_code < 4) {
+                distance = distance_code + 1;
+            } else if (distance_code < 30) {
+                int extra_bits = ((distance_code / 2)) - 1;
+                int additional_amount = (int)read_bits_rev(bs, extra_bits);
+                // distance = 2 ^ (extra_bits + 1) + (2 ^ extra_bits * (distance_code % 2)) + 1
+                int starter_distance = (1 << (extra_bits + 1)) + ((1 << extra_bits) * (distance_code % 2)) + 1;
+                distance = starter_distance + additional_amount;
+            } else {
+                fprintf(stderr, "Error, found unexpected distance code > 29.");
+            }
+            
+            // make sure we have enough room
+            if ((actual_length + length) >= buffer_length) {
+                buffer_length *= 2;
+                buffer_length += length;
+                output = realloc(output, buffer_length);
+            }
+            
+            // copy over bytes
+            for (int i = 0; i < length; i++) {
+                output[actual_length] = output[actual_length - distance];
+                actual_length++;
+            }
+            
+        } else {
+            fprintf(stderr, "Error, found unexpected symbol > 285.");
+            break;
+        }
+        
+    } while (last_symbol != END_OF_BLOCK);
+    
+    *block_length = actual_length;
+    output = realloc(output, actual_length);
+    
+    return output;
+}
+
+uint8_t *nflate_fixed_block(bitstream *bs, size_t *block_length) {
     uint8_t *output = NULL;
     
     uint8_t *code_lengths = calloc(NUM_LIT_LEN_SYMBOLS, 1);
 
     uint16_t *code_to_symbol = NULL;
     // build fixed table
-    for (int i = 0; i <= 287; i++) {
+    for (int i = 0; i < NUM_LIT_LEN_SYMBOLS; i++) {
         if (i < 144) {
             code_lengths[i] = 8;
         } else if (i < 256) {
@@ -156,41 +274,168 @@ uint8_t *nflate_fixed_block(bitstream *bs) {
         }
     }
     
-    generate_tables(code_lengths, code_to_symbol, NUM_LIT_LEN_SYMBOLS);
+
     
-    // expand huffman codes based on code_to_symbol
-    // read 1 bit at a time and if the item is in the table, you found it
-    // you did not find it if you found NO_SYMBOL
+    generate_tables(code_lengths, &code_to_symbol, NUM_LIT_LEN_SYMBOLS);
+    
+//    for (int i = 0; i < 32768; i++) {
+//        printf("%d\n", code_to_symbol[i]);
+//    }
+    
+    output = expand(bs, code_to_symbol, true, block_length, NULL);
+    
     
     free(code_lengths);
     free(code_to_symbol);
     return output;
 }
 
+uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, uint16_t *code_to_symbol, int alphabet_size) {
+    uint8_t *alphabet = calloc(alphabet_size, 1);
+    uint16_t last_symbol = 0;
+    uint16_t symbol = 0;
+    uint16_t bits = 0;
+    int num_processed = 0;
+    do {
+        do {
+            bits = (bits << 1) | read_bit(bs);
+            symbol = code_to_symbol[bits];
+        } while (symbol != 0);
+        if (symbol < 16) {
+            alphabet[num_processed] = symbol;
+            num_processed++;
+        } else if (symbol == 16) {
+            int extra = ((int)read_bits_rev(bs, 2)) + 3;
+            for (int i = 0; i < extra; i++) {
+                alphabet[num_processed] = last_symbol;
+                num_processed++;
+            }
+        } else if (symbol == 17) {
+            int extra = ((int)read_bits_rev(bs, 3)) + 3;
+            for (int i = 0; i < extra; i++) {
+                alphabet[num_processed] = 0;
+                num_processed++;
+            }
+        } else if (symbol == 18) {
+            int extra = ((int)read_bits_rev(bs, 7)) + 11;
+            for (int i = 0; i < extra; i++) {
+                alphabet[num_processed] = 0;
+                num_processed++;
+            }
+        } else {
+            fprintf(stderr, "Error, found unexpected symbol > 18 reading lit/length table.");
+        }
+        
+        last_symbol = symbol;
+    } while (num_processed < alphabet_size);
+    
+    return alphabet;
+}
+
+uint8_t *nflate_dynamic_block(bitstream *bs, size_t *block_length) {
+    uint8_t *output = NULL;
+    
+    
+
+    uint16_t *code_to_symbol = NULL;
+    // build dynamic tables
+    int HLIT = ((int)read_bits_rev(bs, 5)) + 257;
+    int HDIST = ((int)read_bits_rev(bs, 5)) + 1;
+    int HCLEN = ((int)read_bits_rev(bs, 4)) + 4;
+    
+    // build code length alphabet
+    uint8_t *code_lengths = calloc(19, 1);
+    int code_length_indices[19] = {16, 17, 18,
+        0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
+    for (int i = 0; i < HCLEN; i++) {
+        uint8_t code_length = read_bits_rev(bs, 3);
+        code_lengths[code_length_indices[i]] = code_length;
+    }
+    
+    for (int i = 0; i < 19; i++) {
+        printf("%d \t %d\n", i, code_lengths[i]);
+    }
+
+    generate_tables(code_lengths, &code_to_symbol, 19);
+    
+    
+    
+    for (int i = 0; i < 32768; i++) {
+        int result = code_to_symbol[i];
+        if (result != NO_SYMBOL) {
+            printf("%d \t %d\n", i, result);
+        }
+    }
+        
+    // build literal/length alphabet
+    uint8_t *lit_len_code_lengths = process_dynamic_huffman_code_lengths(bs, code_to_symbol, HLIT);
+    uint16_t *lit_len_code_to_symbol = NULL;
+    generate_tables(lit_len_code_lengths, &lit_len_code_to_symbol, HLIT);
+    
+    // build distance alphabet
+    uint8_t *dist_code_lengths = process_dynamic_huffman_code_lengths(bs, code_to_symbol, HDIST);
+    uint16_t *dist_code_to_symbol = NULL;
+    generate_tables(dist_code_lengths, &dist_code_to_symbol, HDIST);
+    
+//    for (int i = 0; i < 32768; i++) {
+//        printf("%d\n", code_to_symbol[i]);
+//    }
+    
+    output = expand(bs, lit_len_code_to_symbol, false, block_length, dist_code_to_symbol);
+    
+    
+    free(code_lengths);
+    free(code_to_symbol);
+    free(lit_len_code_lengths);
+    free(lit_len_code_to_symbol);
+    free(dist_code_lengths);
+    free(dist_code_to_symbol);
+    return output;
+}
+
+
 uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
     uint8_t *reconstituted = NULL;
     
     bitstream *bs = create_bitstream(compressed, length);
     
-    // read block header
-    bool BFINAL = read_bit(bs); // is this the last block?
-    uint64_t BTYPE = read_bits(bs, 2);
+    bool BFINAL;
+    do {
+        // read block header
+        BFINAL = read_bit(bs); // is this the last block?
+        uint64_t BTYPE = read_bits_rev(bs, 2);
+        size_t block_length = 0;
     
-    switch (BTYPE) {
-        case 0b00: // uncompressed
-            break;
-        case 0b01: // fixed huffman codes
-        {
-            uint8_t *block_result = nflate_fixed_block(bs);
-            printf("%s", block_result);
-            break;
+        uint8_t *block_result = NULL;
+        switch (BTYPE) {
+            case 0b00: // uncompressed
+                break;
+            case 0b01: // fixed huffman codes
+            {
+                block_result = nflate_fixed_block(bs, &block_length);
+                
+                printf("%s", block_result);
+                break;
+            }
+            case 0b10: // dynamic huffman codes
+                block_result = nflate_dynamic_block(bs, &block_length);
+                
+                printf("%s", block_result);
+                break;
+            case 0b11: // reserved
+                fprintf(stderr, "Error, improper block header.");
+                break;
         }
-        case 0b10: // dynamic huffman codes
-            break;
-        case 0b11: // reserved
-            fprintf(stderr, "Error, improper block header.");
-            break;
-    }
+        
+        if (reconstituted == NULL) {
+            reconstituted = malloc(block_length);
+        } else {
+            reconstituted = realloc(reconstituted, (*result_length + block_length));
+        }
+        memcpy(reconstituted + *result_length, block_result, block_length);
+        *result_length += block_length;
+        free(block_result);
+    } while(BFINAL != true);
     
     return reconstituted;
 }
