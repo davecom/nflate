@@ -182,7 +182,7 @@ void generate_tree(uint8_t *code_lengths, bt *tree_root, int num_symbols) {
                     current = current->left;
                 }
             }
-            printf("%d \t %d \t %d\n", code, n, current->value);
+            //printf("%d \t %d \t %d\n", code, n, current->value);
             next_code[len]++;
         }
     }
@@ -368,9 +368,9 @@ void nflate_dynamic_block(bitstream *bs, uint8_t **output_buffer, size_t *output
         code_lengths[code_length_indices[i]] = code_length;
     }
     
-    for (int i = 0; i < 19; i++) {
-        printf("%d \t %d\n", i, code_lengths[i]);
-    }
+//    for (int i = 0; i < 19; i++) {
+//        printf("%d \t %d\n", i, code_lengths[i]);
+//    }
 
     bt *huffman_tree = create_bt(NO_SYMBOL);
     
@@ -400,7 +400,6 @@ void nflate_dynamic_block(bitstream *bs, uint8_t **output_buffer, size_t *output
 
 uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
     uint8_t *reconstituted = NULL;
-    size_t reconstituted_length = 0;
     
     bitstream *bs = create_bitstream(compressed, length);
     
@@ -415,15 +414,15 @@ uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
                 break;
             case 0b01: // fixed huffman codes
             {
-                nflate_fixed_block(bs, &reconstituted, &reconstituted_length);
+                nflate_fixed_block(bs, &reconstituted, result_length);
                 
-                printf("%s", reconstituted);
+//                printf("%s", reconstituted);
                 break;
             }
             case 0b10: // dynamic huffman codes
-                nflate_dynamic_block(bs, &reconstituted, &reconstituted_length);
+                nflate_dynamic_block(bs, &reconstituted, result_length);
                 
-                printf("%s", reconstituted);
+//                printf("%s", reconstituted);
                 break;
             case 0b11: // reserved
                 fprintf(stderr, "Error, improper block header.");
@@ -597,7 +596,7 @@ int main(int argc, const char * argv[]) {
     
     size_t uncompressed_length = 0;
     uint8_t *uncompressed = nflate(gzf->data, gzf->data_length, &uncompressed_length);
-    
+    printf("%s", uncompressed);
 //    uint8_t data[2] = {0b10001000, 0b10001111};
 //    bitstream *bs = create_bitstream(data, 2);
 //    uint64_t bits1 = read_bits(bs, 3);
@@ -609,9 +608,26 @@ int main(int argc, const char * argv[]) {
 //    uint64_t bits6 = read_bits(bs, 4);
 //    uint64_t bits7 = read_bits(bs, 10);
     // CRC is on uncompressed data
-//    if (!doCRC32Check(gzf->data, gzf->data_length, gzf->CRC32)) {
-//        fprintf(stderr, "CRC32 check did not pass on data.");
-//    }
+    if (!doCRC32Check(uncompressed, uncompressed_length, gzf->CRC32)) {
+        fprintf(stderr, "CRC32 check did not pass on data.");
+    }
+    
+    // write output file
+    FILE *out_file;
+    out_file = fopen (gzf->FNAME, "w");
+    if (out_file == NULL) {
+        perror ("The following error occurred");
+    }
+    size_t written_bytes = fwrite(uncompressed, 1, uncompressed_length, out_file);
+    if (written_bytes != uncompressed_length) {
+        printf("Expected to write %zu bytes, but fwrite returned %zu.", uncompressed_length, written_bytes);
+    }
+    
+    if (ferror(out_file)) {
+        perror ("Error writing to file.");
+    }
+    fflush(out_file);
+    fclose(out_file);
     
     free_gzfipfile(gzf);
     return 0;
