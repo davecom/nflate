@@ -101,14 +101,43 @@ uint64_t read_bits_rev(bitstream *bs, int n) {
     return bits;
 }
 
+
+// Binary Tree
+typedef struct bt {
+    uint16_t value;
+    struct bt *left; // 0
+    struct bt *right; // 1
+} bt;
+
+bt *create_bt(uint16_t value) {
+    bt *node = malloc(sizeof(bt));
+    if (node == NULL) {
+        fprintf(stderr, "Error allocating memory for bt.");
+    }
+    node->left = NULL;
+    node->right = NULL;
+    node->value = value;
+    return node;
+}
+
+void free_bt(bt *node) {
+    if (node->left != NULL) {
+        free_bt(node->left);
+    }
+    if (node->right != NULL) {
+        free_bt(node->right);
+    }
+    free(node);
+}
+
 #define MAX_BITS 16
 #define NUM_LIT_LEN_SYMBOLS 288
 #define NO_SYMBOL 65535
 
-// code_to_symbol maps code (0-32767) -> symbol, puts a stop symbol if it's not there
+// generate huffman code tree
 // code adated from RFC 1951 section 3.2.2
 // https://tools.ietf.org/html/rfc1951
-void generate_tables(uint8_t *code_lengths, uint16_t **code_to_symbol, int num_symbols) {
+void generate_tree(uint8_t *code_lengths, bt *tree_root, int num_symbols) {
     int bl_count[MAX_BITS] = {0};
     for (int i = 0; i < num_symbols; i++) {
         bl_count[code_lengths[i]]++;
@@ -132,19 +161,44 @@ void generate_tables(uint8_t *code_lengths, uint16_t **code_to_symbol, int num_s
 //        }
 //    }
     
-    *code_to_symbol = calloc(65536, 2);
-    if (*code_to_symbol == NULL) {
-        fprintf(stderr, "Error allocating memory for code_to_symbol.");
-    }
+//    *code_to_symbol = calloc(65536, 2);
+//    if (*code_to_symbol == NULL) {
+//        fprintf(stderr, "Error allocating memory for code_to_symbol.");
+//    }
     
     
-    memset(*code_to_symbol, NO_SYMBOL, 65536 * 2);
+//    memset(*code_to_symbol, NO_SYMBOL, 65536 * 2);
+    
+    
     for (int n = 0; n < num_symbols; n++) {
         uint8_t len = code_lengths[n];
         if (len != 0) {
             uint16_t code = next_code[len];
-            (*code_to_symbol)[code] = n;
-            //printf("%d \t %d \t %d\n", code, n, (*code_to_symbol)[code]);
+            // add node to tree
+            bt *current = tree_root;
+            for (int i = (len - 1); i >= 0; i--) {
+                bool bit = (code & (1 << i));
+                if (bit) { // 1, right
+                    if (current->right == NULL) {
+                        if (i == 0) {
+                            current->right = create_bt(n);
+                        } else {
+                            current->right = create_bt(NO_SYMBOL);
+                        }
+                    }
+                    current = current->right;
+                } else { // 0, left
+                    if (current->left == NULL) {
+                        if (i == 0) {
+                            current->left = create_bt(n);
+                        } else {
+                            current->left = create_bt(NO_SYMBOL);
+                        }
+                    }
+                    current = current->left;
+                }
+            }
+            printf("%d \t %d \t %d\n", code, n, current->value);
             next_code[len]++;
         }
     }
@@ -155,7 +209,15 @@ void generate_tables(uint8_t *code_lengths, uint16_t **code_to_symbol, int num_s
 
 #define END_OF_BLOCK 256
 
-uint8_t *expand(bitstream *bs, uint16_t *code_to_symbol, bool fixed_distances, size_t *block_length, uint16_t *dist_code_to_symbol) {
+uint16_t get_symbol(bitstream *bs, bt *root) {
+    bt *current = root;
+    do {
+        current = read_bit(bs) ? current->right : current->left;
+    } while ((current->left != NULL) || (current->right != NULL));
+    return current->value;
+}
+
+uint8_t *expand(bitstream *bs, bt *len_lit_tree, bool fixed_distances, size_t *block_length, bt *dist_tree) {
     uint8_t *output = NULL;
     // expand huffman codes based on code_to_symbol
     // read 1 bit at a time and if the item is in the table, you found it
@@ -166,15 +228,17 @@ uint8_t *expand(bitstream *bs, uint16_t *code_to_symbol, bool fixed_distances, s
     size_t actual_length = 0;
     uint16_t last_symbol = 0;
     do {
-        uint16_t bits = 0;
-        // commented out sections are if reversed
-//        uint8_t num_bits = 0;
-        do {
-//            bits |= (read_bit(bs) << num_bits);
-//            num_bits++;
-            bits = (bits << 1) | read_bit(bs);
-            last_symbol = code_to_symbol[bits];
-        } while (last_symbol == NO_SYMBOL);
+//        uint16_t bits = 0;
+//        // commented out sections are if reversed
+////        uint8_t num_bits = 0;
+//        do {
+////            bits |= (read_bit(bs) << num_bits);
+////            num_bits++;
+//            bits = (bits << 1) | read_bit(bs);
+//            last_symbol = code_to_symbol[bits];
+//        } while (last_symbol == NO_SYMBOL);
+        
+        last_symbol = get_symbol(bs, len_lit_tree);
         
         if (last_symbol < 256) { // literal
             if (actual_length == buffer_length) {
@@ -209,13 +273,14 @@ uint8_t *expand(bitstream *bs, uint16_t *code_to_symbol, bool fixed_distances, s
             if (fixed_distances) {
                 distance_code = (uint8_t)read_bits_rev(bs, 5);
             } else { // dynamic distance must be read
-                uint16_t dist_bits = 0;
-                do {
-        //            bits |= (read_bit(bs) << num_bits);
-        //            num_bits++;
-                    dist_bits = (dist_bits << 1) | read_bit(bs);
-                    distance_code = dist_code_to_symbol[dist_bits];
-                } while (distance_code == NO_SYMBOL);
+//                uint16_t dist_bits = 0;
+//                do {
+//        //            bits |= (read_bit(bs) << num_bits);
+//        //            num_bits++;
+//                    dist_bits = (dist_bits << 1) | read_bit(bs);
+//                    distance_code = dist_code_to_symbol[dist_bits];
+//                } while (distance_code == NO_SYMBOL);
+                distance_code = get_symbol(bs, dist_tree);
             }
             if (distance_code < 4) {
                 distance = distance_code + 1;
@@ -259,8 +324,6 @@ uint8_t *nflate_fixed_block(bitstream *bs, size_t *block_length) {
     uint8_t *output = NULL;
     
     uint8_t *code_lengths = calloc(NUM_LIT_LEN_SYMBOLS, 1);
-
-    uint16_t *code_to_symbol = NULL;
     // build fixed table
     for (int i = 0; i < NUM_LIT_LEN_SYMBOLS; i++) {
         if (i < 144) {
@@ -275,32 +338,33 @@ uint8_t *nflate_fixed_block(bitstream *bs, size_t *block_length) {
     }
     
 
-    
-    generate_tables(code_lengths, &code_to_symbol, NUM_LIT_LEN_SYMBOLS);
+    bt *lit_len_tree_root = create_bt(NO_SYMBOL);
+    generate_tree(code_lengths, lit_len_tree_root, NUM_LIT_LEN_SYMBOLS);
     
 //    for (int i = 0; i < 32768; i++) {
 //        printf("%d\n", code_to_symbol[i]);
 //    }
     
-    output = expand(bs, code_to_symbol, true, block_length, NULL);
+    output = expand(bs, lit_len_tree_root, true, block_length, NULL);
     
     
     free(code_lengths);
-    free(code_to_symbol);
+    free_bt(lit_len_tree_root);
     return output;
 }
 
-uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, uint16_t *code_to_symbol, int alphabet_size) {
+uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, bt *huffman_tree, int alphabet_size) {
     uint8_t *alphabet = calloc(alphabet_size, 1);
     uint16_t last_symbol = 0;
     uint16_t symbol = 0;
-    uint16_t bits = 0;
+//    uint16_t bits = 0;
     int num_processed = 0;
     do {
-        do {
-            bits = (bits << 1) | read_bit(bs);
-            symbol = code_to_symbol[bits];
-        } while (symbol != 0);
+        symbol = get_symbol(bs, huffman_tree);
+//        do {
+//            bits = (bits << 1) | read_bit(bs);
+//            symbol = code_to_symbol[bits];
+//        } while (symbol != 0);
         if (symbol < 16) {
             alphabet[num_processed] = symbol;
             num_processed++;
@@ -335,9 +399,6 @@ uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, uint16_t *code_to_s
 uint8_t *nflate_dynamic_block(bitstream *bs, size_t *block_length) {
     uint8_t *output = NULL;
     
-    
-
-    uint16_t *code_to_symbol = NULL;
     // build dynamic tables
     int HLIT = ((int)read_bits_rev(bs, 5)) + 257;
     int HDIST = ((int)read_bits_rev(bs, 5)) + 1;
@@ -356,40 +417,33 @@ uint8_t *nflate_dynamic_block(bitstream *bs, size_t *block_length) {
         printf("%d \t %d\n", i, code_lengths[i]);
     }
 
-    generate_tables(code_lengths, &code_to_symbol, 19);
+    bt *huffman_tree = create_bt(NO_SYMBOL);
     
-    
-    
-    for (int i = 0; i < 32768; i++) {
-        int result = code_to_symbol[i];
-        if (result != NO_SYMBOL) {
-            printf("%d \t %d\n", i, result);
-        }
-    }
+    generate_tree(code_lengths, huffman_tree, 19);
         
     // build literal/length alphabet
-    uint8_t *lit_len_code_lengths = process_dynamic_huffman_code_lengths(bs, code_to_symbol, HLIT);
-    uint16_t *lit_len_code_to_symbol = NULL;
-    generate_tables(lit_len_code_lengths, &lit_len_code_to_symbol, HLIT);
+    uint8_t *lit_len_code_lengths = process_dynamic_huffman_code_lengths(bs, huffman_tree, HLIT);
+    bt *lit_len_tree = create_bt(NO_SYMBOL);
+    generate_tree(lit_len_code_lengths, lit_len_tree, HLIT);
     
     // build distance alphabet
-    uint8_t *dist_code_lengths = process_dynamic_huffman_code_lengths(bs, code_to_symbol, HDIST);
-    uint16_t *dist_code_to_symbol = NULL;
-    generate_tables(dist_code_lengths, &dist_code_to_symbol, HDIST);
+    uint8_t *dist_code_lengths = process_dynamic_huffman_code_lengths(bs, huffman_tree, HDIST);
+    bt *dist_tree = create_bt(NO_SYMBOL);
+    generate_tree(dist_code_lengths, dist_tree, HDIST);
     
 //    for (int i = 0; i < 32768; i++) {
 //        printf("%d\n", code_to_symbol[i]);
 //    }
     
-    output = expand(bs, lit_len_code_to_symbol, false, block_length, dist_code_to_symbol);
+    output = expand(bs, lit_len_tree, false, block_length, dist_tree);
     
     
     free(code_lengths);
-    free(code_to_symbol);
+    free_bt(huffman_tree);
     free(lit_len_code_lengths);
-    free(lit_len_code_to_symbol);
+    free_bt(lit_len_tree);
     free(dist_code_lengths);
-    free(dist_code_to_symbol);
+    free_bt(dist_tree);
     return output;
 }
 
