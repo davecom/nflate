@@ -5,17 +5,29 @@ OBJECTS = binarytree.obj bitstream.obj crc32.obj gzipfile.obj nflate.obj main.ob
 nflate: $(OBJECTS)
 	$(CC) /Fe"nflate" $(OBJECTS)
 
-PPlot.obj: lib\PPlot.cpp lib\PPlot.h
-	$(CC) $(FLAGS) /c lib\PPlot.cpp
+release: FLAGS += /O2
+release: nflate 
 
-SVGPainter.obj: lib\SVGPainter.cpp lib\SVGPainter.h
-	$(CC) $(FLAGS) /c lib\SVGPainter.cpp
+debug: FLAGS += /Zi
+debug: nflate
 
-test.obj: src\test.cpp src\PriorityQueue.h src\timing.h
-	$(CC) $(FLAGS) /I lib\ -c src\test.cpp
+binarytree.obj: src\binarytree.c src\binarytree.h
+	$(CC) $(FLAGS) /c src\binarytree.c
 
-main.obj: src\main.cpp src\PriorityQueue.h src\timing.h
-	$(CC) $(FLAGS) /I lib\ -c src\main.cpp
+bitstream.obj: src\bitstream.c src\bitstream.h
+	$(CC) $(FLAGS) /c src\bitstream.c
+
+crc32.obj: src\crc32.c src\crc32.h
+	$(CC) $(FLAGS) /c src\crc32.c
+
+gzipfile.obj: src\gzipfile.c src\gzipfile.h
+	$(CC) $(FLAGS) /c src\gzipfile.c
+
+nflate.obj: src\nflate.c src\nflate.h src\bitstream.h src\binarytree.h
+	$(CC) $(FLAGS) /c src\nflate.c
+
+main.obj: src\main.c src\crc32.h src\gzipfile.h src\nflate.h
+	$(CC) $(FLAGS) /c src\main.c
 
 clean:
-	del assignment12.exe *.obj *.svg
+	del nflate.exe *.obj

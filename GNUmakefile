@@ -19,16 +19,16 @@ bitstream.o: bitstream.c bitstream.h
 	$(CC) $(FLAGS) -c src/bitstream.c
 
 crc32.o: crc32.c crc32.h
-	$(CC) $(FLAGS) -Ilib -c src/crc32.c
+	$(CC) $(FLAGS) -c src/crc32.c
 
 gzipfile.o: gzipfile.c gzipfile.h
-	$(CC) $(FLAGS) -Ilib -c src/gzipfile.c
+	$(CC) $(FLAGS) -c src/gzipfile.c
 
 nflate.o: nflate.c nflate.h bitstream.h binarytree.h
-	$(CC) $(FLAGS) -Ilib -c src/nflate.c
+	$(CC) $(FLAGS) -c src/nflate.c
 
 main.o: main.c crc32.h gzipfile.h nflate.h
-	$(CC) $(FLAGS) -Ilib -c src/main.c
+	$(CC) $(FLAGS) -c src/main.c
 
 clean:
 	rm nflate *.o
