@@ -1,141 +1,35 @@
 //
-//  main.c
-//  dflate
+//  nflate.c
+//  nflate
 //
-//  Created by David Kopec on 9/27/20.
+//  Copyright (c) 2020 David Kopec
 //
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 
 #include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <string.h>
+#include "nflate.h"
+#include "bitstream.h"
+#include "binarytree.h"
 
+// Based on RFC 1951
 // https://tools.ietf.org/html/rfc1951
-// https://tools.ietf.org/html/rfc1952
 
-typedef struct {
-    bool FTEXT : 1;
-    bool FHCRC : 1;
-    bool FEXTRA : 1;
-    bool FNAME : 1;
-    bool FCOMMENT : 1;
-    uint8_t reserved: 3;
-} gzipflags;
-
-typedef struct {
-    uint8_t ID1;
-    uint8_t ID2;
-    uint8_t CM;
-    gzipflags FLG;
-    uint32_t MTIME;
-    uint8_t XFL;
-    uint8_t OS;
-} gzipheader;
-
-typedef struct {
-    
-    gzipheader header;
-    char *FEXTRA;
-    char *FNAME;
-    char *FCOMMENT;
-    uint16_t FHCRC;
-    uint8_t *data;
-    size_t data_length;
-    uint32_t CRC32;
-    uint32_t ISIZE;
-} gzipfile;
-
-void free_gzfipfile(gzipfile *gzf) {
-    if (gzf->FEXTRA != NULL) {
-        free(gzf->FEXTRA);
-    }
-    if (gzf->FNAME != NULL) {
-        free(gzf->FNAME);
-    }
-    if (gzf->FCOMMENT != NULL) {
-        free(gzf->FCOMMENT);
-    }
-    free(gzf);
-}
-
-uint8_t *dflate(void *original) {
-    uint8_t *compressed = NULL;
-    
-    return compressed;
-}
-
-typedef struct {
-    uint8_t *data;
-    size_t byteLength;
-    uint64_t bitIndex;
-} bitstream;
-
-bitstream *create_bitstream(uint8_t *data, size_t length) {
-    bitstream *bs = calloc(1, sizeof(bitstream));
-    if (bs == NULL) {
-        fprintf(stderr, "Error allocating memory for bitsream.");
-    }
-    bs->data = data;
-    bs->byteLength = length;
-    return bs;
-}
-
-// READ FROM LSB TO MSB along BYTE boundaries
-bool read_bit(bitstream *bs) {
-    return ((bs->data[bs->bitIndex / 8]) >> (bs->bitIndex++ % 8)) & 1;
-}
-
-//read up to 64 bits at a time
-uint64_t read_bits(bitstream *bs, int n) {
-    uint64_t bits = 0;
-    for (int i = 0; i < n; i++) {
-        bits = (bits << 1) | read_bit(bs);
-    }
-    return bits;
-}
-
-// reversed, so in same ordering as originally in within the byte
-uint64_t read_bits_rev(bitstream *bs, int n) {
-    uint64_t bits = 0;
-    for (int i = 0; i < n; i++) {
-        bits |= (read_bit(bs) << i);
-    }
-    return bits;
-}
-
-
-// Binary Tree
-typedef struct bt {
-    uint16_t value;
-    struct bt *left; // 0
-    struct bt *right; // 1
-} bt;
-
-bt *create_bt(uint16_t value) {
-    bt *node = malloc(sizeof(bt));
-    if (node == NULL) {
-        fprintf(stderr, "Error allocating memory for bt.");
-    }
-    node->left = NULL;
-    node->right = NULL;
-    node->value = value;
-    return node;
-}
-
-void free_bt(bt *node) {
-    if (node->left != NULL) {
-        free_bt(node->left);
-    }
-    if (node->right != NULL) {
-        free_bt(node->right);
-    }
-    free(node);
-}
 
 #define MAX_BITS 16
 #define NUM_LIT_LEN_SYMBOLS 288
 #define NO_SYMBOL 65535
+#define END_OF_BLOCK 256
 
 // generate huffman code tree
 // code prior to tree creation adated from RFC 1951 section 3.2.2
@@ -191,7 +85,7 @@ void generate_tree(uint8_t *code_lengths, bt *tree_root, int num_symbols) {
     // free(symbol_to_code);
 }
 
-#define END_OF_BLOCK 256
+
 
 uint16_t get_symbol(bitstream *bs, bt *root) {
     bt *current = root;
@@ -410,225 +304,26 @@ uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
         uint64_t BTYPE = read_bits_rev(bs, 2); // name comes from RFC 1951
         
         switch (BTYPE) {
-            case 0b00: // uncompressed
+            case 0: // uncompressed
                 break;
-            case 0b01: // fixed huffman codes
+            case 1: // fixed huffman codes
             {
                 nflate_fixed_block(bs, &reconstituted, result_length);
                 
 //                printf("%s", reconstituted);
                 break;
             }
-            case 0b10: // dynamic huffman codes
+            case 2: // dynamic huffman codes
                 nflate_dynamic_block(bs, &reconstituted, result_length);
                 
 //                printf("%s", reconstituted);
                 break;
-            case 0b11: // reserved
+            case 3: // reserved
                 fprintf(stderr, "Error, improper block header.");
                 break;
         }
         
-//        if (reconstituted == NULL) {
-//            reconstituted = malloc(block_length);
-//        } else {
-//            reconstituted = realloc(reconstituted, (*result_length + block_length));
-//        }
-//        memcpy(reconstituted + *result_length, block_result, block_length);
-//        *result_length += block_length;
-//        free(block_result);
     } while(BFINAL != true);
     
     return reconstituted;
-}
-
-// https://en.wikipedia.org/wiki/Cyclic_redundancy_check#CRC-32_algorithm
-bool doCRC32Check(uint8_t *data, size_t length, uint32_t crc_check) {
-    uint32_t crc32 = 0xFFFFFFFF;
-    uint32_t lookup_table[256];
-    
-    // code from RFC 1952 for table
-    // https://tools.ietf.org/html/rfc1952#section-8.1.1.6.2
-    uint32_t c;
-
-    int n, k;
-    for (n = 0; n < 256; n++) {
-        c = (uint32_t) n;
-        for (k = 0; k < 8; k++) {
-            if (c & 1) {
-                c = 0xedb88320 ^ (c >> 1);
-            } else {
-                c = c >> 1;
-            }
-        }
-        lookup_table[n] = c;
-    }
-    
-    // based on Wikipedia pseudocode
-    for (int i = 0; i < length; i++) {
-        int lookup_index = (crc32 ^ data[i]) & 0xFF;
-        crc32 = (crc32 >> 8) ^ lookup_table[lookup_index];
-    }
-    crc32 ^= 0xFFFFFFFF;
-    return crc32 == crc_check;
-}
-
-gzipfile *read_gzipfile(const char *name) {
-    FILE *input = fopen(name, "rb");
-    if (!input) {
-        fprintf(stderr, "Can't open %s\n", name);
-        return NULL;
-    }
-    
-    gzipfile *gzf = calloc(1, sizeof(gzipfile));
-    
-    // IDs must be write to be valid gzip file
-    gzf->header.ID1 = fgetc(input);
-    if (gzf->header.ID1 != 31) { goto error; }
-    gzf->header.ID2 = fgetc(input);
-    if (gzf->header.ID2 != 139) { goto error; }
-    gzf->header.CM = fgetc(input);
-    uint8_t flags = fgetc(input);
-    gzf->header.FLG.FTEXT = flags & 1;
-    gzf->header.FLG.FHCRC = flags & 2;
-    gzf->header.FLG.FEXTRA = flags & 4;
-    gzf->header.FLG.FNAME = flags & 8;
-    gzf->header.FLG.FCOMMENT = flags & 16;
-    fread(&gzf->header.MTIME, 4, 1, input);
-    gzf->header.XFL = fgetc(input);
-    gzf->header.OS = fgetc(input);
-    
-    if (gzf->header.FLG.FEXTRA) {
-        uint16_t XLEN = 0;
-        fread(&XLEN, 2, 1, input);
-        gzf->FEXTRA = calloc(1, XLEN);
-        fread(gzf->FEXTRA, 1, XLEN, input);
-    }
-    
-    if (gzf->header.FLG.FNAME) {
-        char temp;
-        size_t length = 1;
-        char *buffer = malloc(length);
-        int i = 0;
-        do {
-            if (i >= length) {
-                length *= 2;
-                buffer = realloc(buffer, length);
-            }
-            temp = fgetc(input);
-            if (temp == EOF) {
-                fprintf(stderr, "Unexpectedly found EOF while reading FNAME.");
-                goto error;
-            }
-            buffer[i] = temp;
-            i++;
-        } while(temp != '\0');
-        gzf->FNAME = realloc(buffer, i);
-    }
-    
-    if (gzf->header.FLG.FCOMMENT) {
-        char temp;
-        size_t length = 1;
-        char *buffer = malloc(length);
-        int i = 0;
-        do {
-            if (i >= length) {
-                length *= 2;
-                buffer = realloc(buffer, length);
-            }
-            temp = fgetc(input);
-            if (temp == EOF) {
-                fprintf(stderr, "Unexpectedly found EOF while reading FCOMMENT.");
-                goto error;
-            }
-            buffer[i] = temp;
-            i++;
-        } while(temp != '\0');
-        gzf->FCOMMENT = realloc(buffer, i);
-    }
-    
-    if (gzf->header.FLG.FHCRC) {
-        fread(&gzf->FHCRC, 2, 1, input);
-    }
-    
-    long int data_start = ftell(input);
-    if (fseek(input, -8, SEEK_END) != 0){
-        fprintf(stderr, "Error seeking to end of data block.");
-    }
-    long int data_end = ftell(input);
-    if (fseek(input, data_start, SEEK_SET) != 0) {
-        fprintf(stderr, "Error seeking to start of data block.");
-    }
-    long int data_size = data_end - data_start;
-    gzf->data = malloc(data_size);
-    if (!gzf->data) {
-        fprintf(stderr, "Error allocating memory for data.");
-        goto error;
-    }
-    gzf->data_length = data_size;
-    size_t amountRead = fread(gzf->data, 1, data_size, input);
-    if (amountRead != data_size) {
-        fprintf(stderr, "Error reading data from file.");
-        goto error;
-    }
-    fread(&gzf->CRC32, 4, 1, input);
-    fread(&gzf->ISIZE, 4, 1, input);
-    
-    fclose(input);
-    
-    return gzf;
-    
-error:
-    fclose(input);
-    free_gzfipfile(gzf);
-    return NULL;
-}
-
-int main(int argc, const char * argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Need a filename.");
-        return 1;
-    }
-    gzipfile *gzf = read_gzipfile(argv[1]);
-    if (gzf == NULL) {
-        return 1;
-    }
-    
-    size_t uncompressed_length = 0;
-    uint8_t *uncompressed = nflate(gzf->data, gzf->data_length, &uncompressed_length);
-    printf("%s", uncompressed);
-//    uint8_t data[2] = {0b10001000, 0b10001111};
-//    bitstream *bs = create_bitstream(data, 2);
-//    uint64_t bits1 = read_bits(bs, 3);
-//    uint64_t bits2 = read_bits(bs, 3);
-//    uint64_t bits3 = read_bits(bs, 3);
-//    uint64_t bits4 = read_bits(bs, 4);
-//    uint64_t bits5 = read_bits(bs, 3);
-//    bs->bitIndex = 0;
-//    uint64_t bits6 = read_bits(bs, 4);
-//    uint64_t bits7 = read_bits(bs, 10);
-    // CRC is on uncompressed data
-    if (!doCRC32Check(uncompressed, uncompressed_length, gzf->CRC32)) {
-        fprintf(stderr, "CRC32 check did not pass on data.");
-    }
-    
-    // write output file
-    FILE *out_file;
-    out_file = fopen (gzf->FNAME, "w");
-    if (out_file == NULL) {
-        perror ("The following error occurred");
-    }
-    size_t written_bytes = fwrite(uncompressed, 1, uncompressed_length, out_file);
-    if (written_bytes != uncompressed_length) {
-        printf("Expected to write %zu bytes, but fwrite returned %zu.", uncompressed_length, written_bytes);
-    }
-    
-    if (ferror(out_file)) {
-        perror ("Error writing to file.");
-    }
-    fflush(out_file);
-    fclose(out_file);
-    
-    free_gzfipfile(gzf);
-    return 0;
 }
