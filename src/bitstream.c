@@ -30,7 +30,9 @@ bitstream *create_bitstream(uint8_t *data, size_t length) {
 
 // READ FROM LSB TO MSB along BYTE boundaries
 bool read_bit(bitstream *bs) {
-    return ((bs->data[bs->bitIndex / 8]) >> (bs->bitIndex++ % 8)) & 1;
+    bool answer = ((bs->data[bs->bitIndex / 8]) >> (bs->bitIndex % 8)) & 1;
+    bs->bitIndex++;
+    return answer;
 }
 
 //read up to 64 bits at a time
