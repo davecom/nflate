@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # return true if both files are the same
 the_same () {
