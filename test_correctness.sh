@@ -11,9 +11,9 @@ files=(samples/pandp.txt.gz samples/house.jpg.gz)
 i=0 
 
 #test each file, one at a time
-while [ $i -lt ${#arr[@]} ] 
+while [ $i -lt ${#files[@]} ] 
 do
-	test_file="${arr[$i]}"
+	test_file="${files[$i]}"
 	decompressed_file="decompressed$i"
 	./nflate "$test_file" "$decompressed_file"
 	

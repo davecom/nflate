@@ -22,7 +22,7 @@
 bt *create_bt(uint16_t value) {
     bt *node = malloc(sizeof(bt));
     if (node == NULL) {
-        fprintf(stderr, "Error allocating memory for bt.");
+        fprintf(stderr, "Error allocating memory for bt.\n");
     }
     node->left = NULL;
     node->right = NULL;

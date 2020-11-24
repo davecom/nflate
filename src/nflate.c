@@ -42,7 +42,7 @@ void generate_tree(uint8_t *code_lengths, bt *tree_root, int num_symbols) {
     
     uint16_t code = 0;
     bl_count[0] = 0;
-    uint16_t next_code[MAX_BITS + 1];
+    uint16_t next_code[MAX_BITS + 1] = {0};
     for (uint16_t bits = 1; bits <= MAX_BITS; bits++) {
         code = (code + bl_count[bits-1]) << 1;
         next_code[bits] = code;
@@ -77,6 +77,9 @@ void generate_tree(uint8_t *code_lengths, bt *tree_root, int num_symbols) {
                 }
             }
             //printf("%d \t %d \t %d\n", code, n, current->value);
+            if (n > 284) {
+                printf("yup");
+            }
             next_code[len]++;
         }
     }
@@ -269,6 +272,8 @@ void nflate_dynamic_block(bitstream *bs, uint8_t **output_buffer, size_t *output
     uint8_t *lit_len_code_lengths = process_dynamic_huffman_code_lengths(bs, huffman_tree, HLIT);
     bt *lit_len_tree = create_bt(NO_SYMBOL);
     generate_tree(lit_len_code_lengths, lit_len_tree, HLIT);
+    
+    printf("made it here\n");
     
     // build distance tree
     uint8_t *dist_code_lengths = process_dynamic_huffman_code_lengths(bs, huffman_tree, HDIST);
