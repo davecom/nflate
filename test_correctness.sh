@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # return true if both files are the same
-function the_same {
+the_same () {
 	[ -z "$(diff -q $1 $2)" ]
 }
 
