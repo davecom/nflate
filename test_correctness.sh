@@ -7,7 +7,7 @@ the_same () {
 
 make # build the program
 
-files=(samples/pandp.txt.gz samples/house.jpg.gz) 
+files=("samples/pandp.txt.gz" "samples/house.jpg.gz") 
 i=0 
 
 #test each file, one at a time

@@ -1,5 +1,5 @@
 CC = cl
-FLAGS = /std:c17 /WX /EHsc
+FLAGS = /std:c11 /WX /EHsc
 OBJECTS = binarytree.obj bitstream.obj crc32.obj gzipfile.obj nflate.obj main.obj
 
 nflate: $(OBJECTS)

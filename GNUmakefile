@@ -1,5 +1,5 @@
 CC = gcc
-FLAGS = -std=c17 -Wall -Werror -Wextra -Wpedantic -Wno-unused-variable
+FLAGS = -std=c11 -Wall -Werror -Wextra -Wpedantic -Wno-unused-variable
 VPATH = src
 OBJECTS = binarytree.o bitstream.o crc32.o gzipfile.o nflate.o main.o 
 
