@@ -7,10 +7,28 @@ function the_same {
 
 make # build the program
 
-./nflate samples/pandp.txt.gz
-if the_same pandp.txt samples/pandp.txt
-then
-	echo "Succeeded"
-else
-	echo "Failed"
-fi
+files=(samples/pandp.txt.gz samples/house.jpg.gz) 
+i=0 
+
+#test each file, one at a time
+while [ $i -lt ${#arr[@]} ] 
+do
+	test_file="${arr[$i]}"
+	decompressed_file="decompressed$i"
+	./nflate "$test_file" "$decompressed_file"
+	
+	if the_same "${test_file%.*}" "$decompressed_file"
+	then
+		echo "$test_file Test Passed"
+	else
+		echo "$test_file Test Failed"
+	fi
+	
+	# remove unzipped file
+	rm "$decompressed_file"
+	
+	i=`expr $i + 1` 
+done
+
+# delete binary files
+make clean

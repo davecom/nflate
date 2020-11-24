@@ -32,7 +32,7 @@
 #define END_OF_BLOCK 256
 
 // generate huffman code tree
-// code prior to tree creation adated from RFC 1951 section 3.2.2
+// code prior to tree creation adapted from RFC 1951 section 3.2.2
 // https://tools.ietf.org/html/rfc1951
 void generate_tree(uint8_t *code_lengths, bt *tree_root, int num_symbols) {
     int bl_count[MAX_BITS] = {0};
@@ -80,12 +80,7 @@ void generate_tree(uint8_t *code_lengths, bt *tree_root, int num_symbols) {
             next_code[len]++;
         }
     }
-    //printf("%d \t %d\n", 64, (*code_to_symbol)[64]);
-    
-    // free(symbol_to_code);
 }
-
-
 
 uint16_t get_symbol(bitstream *bs, bt *root) {
     bt *current = root;
@@ -238,7 +233,7 @@ uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, bt *huffman_tree, i
                 num_processed++;
             }
         } else {
-            fprintf(stderr, "Error, found unexpected symbol > 18 reading lit/length table.");
+            fprintf(stderr, "Error, found unexpected symbol > 18 reading lit/length table.\n");
         }
         
         last_symbol = symbol;
@@ -319,7 +314,7 @@ uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
 //                printf("%s", reconstituted);
                 break;
             case 3: // reserved
-                fprintf(stderr, "Error, improper block header.");
+                fprintf(stderr, "Error, improper block header.\n");
                 break;
         }
         

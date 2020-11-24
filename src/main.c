@@ -33,13 +33,13 @@ static bool has_gz_suffix(const char *str) {
 
 int main(int argc, const char * argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Need a filename.");
-        printf("Usage: nflate file_to_be_decompressed.gzip [out_file_name]");
+        fprintf(stderr, "Need a filename.\n");
+        printf("Usage: nflate file_to_be_decompressed.gz [out_file_name]\n");
         return 1;
     }
     gzipfile *gzf = read_gzipfile(argv[1]);
     if (gzf == NULL) {
-        fprintf(stderr, "Cound't read gzip file.");
+        fprintf(stderr, "Cound't read gzip file.\n");
         return 1;
     }
     
@@ -49,7 +49,7 @@ int main(int argc, const char * argv[]) {
 
     // CRC is on uncompressed data
     if (!doCRC32Check(uncompressed, uncompressed_length, gzf->CRC32)) {
-        fprintf(stderr, "CRC32 check did not pass on data.");
+        fprintf(stderr, "CRC32 check did not pass on data.\n");
     }
     
     // write output file
@@ -81,15 +81,15 @@ int main(int argc, const char * argv[]) {
     }
     out_file = fopen(out_file_name, "w");
     if (out_file == NULL) {
-        perror ("The following error occurred");
+        perror ("The following error occurred\n");
     }
     size_t written_bytes = fwrite(uncompressed, 1, uncompressed_length, out_file);
     if (written_bytes != uncompressed_length) {
-        printf("Expected to write %zu bytes, but fwrite returned %zu.", uncompressed_length, written_bytes);
+        printf("Expected to write %zu bytes, but fwrite returned %zu.\n", uncompressed_length, written_bytes);
     }
     
     if (ferror(out_file)) {
-        perror ("Error writing to file.");
+        perror ("Error writing to file.\n");
     }
     fflush(out_file);
     fclose(out_file);
