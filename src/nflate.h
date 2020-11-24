@@ -20,6 +20,7 @@
 #define nflate_h
 
 #include <stdlib.h>
+#include <stdint.h>
 
 // Based on RFC 1951
 // https://tools.ietf.org/html/rfc1951
