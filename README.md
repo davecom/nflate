@@ -1,6 +1,6 @@
-# dflate
+# nflate
 
-dflate is a naive implementation in C of the decompression side of the [DEFLATE](https://en.wikipedia.org/wiki/DEFLATE) algorithm that can unzip [gzip](https://en.wikipedia.org/wiki/Gzip) files. It is mainly based on RFC 1951 (DEFLATE) and RFC 1952 (gzip). It is not trying to be performant. I just wrote it as a means to learn more about compression algorithms. It's probably of little use to others since there are better examples to learn from. I have listed some learning resources that I used below.
+nflate is a naive implementation in C of the decompression (inflation) side of the [DEFLATE](https://en.wikipedia.org/wiki/DEFLATE) algorithm that can unzip [gzip](https://en.wikipedia.org/wiki/Gzip) files. It is mainly based on RFC 1951 (DEFLATE) and RFC 1952 (gzip). It is not trying to be performant. I just wrote it as a means to learn more about compression algorithms. It's probably of little use to others since there are better examples to learn from. I have listed some learning resources that I used below.
 
 Wherever possible I used the original variable names from RFC 1951/RFC 1952 in their original capitalization. That is why there is some strange naming of variables throughout the code.
 
@@ -25,6 +25,8 @@ or
 ```
 nmake release
 ```
+
+There is also an included Xcode project that uses GNUMake as an external build system.
 
 You can then run it and provide the name of the gzip file you want to decompress.
 
