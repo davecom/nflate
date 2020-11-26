@@ -32,38 +32,38 @@ bitstream *create_bitstream(uint8_t *data, size_t length) {
 }
 
 // READ FROM LSB TO MSB along BYTE boundaries
-bool read_bit(bitstream *bs) {
+bool bs_read_bit(bitstream *bs) {
     bool answer = ((bs->data[bs->bitIndex / 8]) >> (bs->bitIndex % 8)) & 1;
     bs->bitIndex++;
     return answer;
 }
 
 //read up to 64 bits at a time
-uint64_t read_bits(bitstream *bs, int n) {
+uint64_t bs_read_bits(bitstream *bs, int n) {
     uint64_t bits = 0;
     for (int i = 0; i < n; i++) {
-        bits = (bits << 1) | read_bit(bs);
+        bits = (bits << 1) | bs_read_bit(bs);
     }
     return bits;
 }
 
 // reversed, so in same ordering as originally in within the byte
-uint64_t read_bits_rev(bitstream *bs, int n) {
+uint64_t bs_read_bits_rev(bitstream *bs, int n) {
     uint64_t bits = 0;
     for (int i = 0; i < n; i++) {
-        bits |= (read_bit(bs) << i);
+        bits |= (bs_read_bit(bs) << i);
     }
     return bits;
 }
 
 // read bytes directly into *dest*
-void read_bytes(bitstream *bs, uint8_t *dest, size_t length) {
+void bs_read_bytes(bitstream *bs, uint8_t *dest, size_t length) {
     memcpy(dest, bs->data + (bs->bitIndex / 8), length);
     bs->bitIndex += (length * 8);
 }
 
 // go to next byte boundary if not already on one
-void move_to_boundary(bitstream *bs) {
+void bs_move_to_boundary(bitstream *bs) {
     // are we on a boundary?
     if (bs->bitIndex % 8 != 0) {
         // skip any bits until the next byte boundary

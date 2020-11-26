@@ -32,18 +32,18 @@ typedef struct {
 bitstream *create_bitstream(uint8_t *data, size_t length);
 
 // read from LSB to MSB along byte boundaries
-bool read_bit(bitstream *bs);
+bool bs_read_bit(bitstream *bs);
 
 //read up to 64 bits at a time
-uint64_t read_bits(bitstream *bs, int n);
+uint64_t bs_read_bits(bitstream *bs, int n);
 
 // reversed, so in same ordering as originally in within the byte
-uint64_t read_bits_rev(bitstream *bs, int n);
+uint64_t bs_read_bits_rev(bitstream *bs, int n);
 
 // read bytes, incrementing bitIndex with as many as needed
-void read_bytes(bitstream *bs, uint8_t *dest, size_t length);
+void bs_read_bytes(bitstream *bs, uint8_t *dest, size_t length);
 
 // go to next byte boundary if not already on one
-void move_to_boundary(bitstream *bs);
+void bs_move_to_boundary(bitstream *bs);
 
 #endif /* bitstream_h */

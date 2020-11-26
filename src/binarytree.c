@@ -18,8 +18,11 @@
 
 #include "binarytree.h"
 #include <stdlib.h>
+#include <stdio.h>
 
-bt *create_bt(uint16_t value) {
+// Create a binary tree node on the heap with null children and *value* value
+// Return a pointer to it
+bt *bt_create(uint16_t value) {
     bt *node = malloc(sizeof(bt));
     if (node == NULL) {
         fprintf(stderr, "Error allocating memory for bt.\n");
@@ -30,12 +33,13 @@ bt *create_bt(uint16_t value) {
     return node;
 }
 
-void free_bt(bt *node) {
+// Free a binary tree node and all of its children recursively
+void bt_free(bt *node) {
     if (node->left != NULL) {
-        free_bt(node->left);
+        bt_free(node->left);
     }
     if (node->right != NULL) {
-        free_bt(node->right);
+        bt_free(node->right);
     }
     free(node);
 }

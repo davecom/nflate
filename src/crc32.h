@@ -19,7 +19,6 @@
 #ifndef crc32_h
 #define crc32_h
 
-#include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 

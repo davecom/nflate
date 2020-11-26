@@ -19,7 +19,6 @@
 #ifndef binarytree_h
 #define binarytree_h
 
-#include <stdio.h>
 #include <stdint.h>
 
 // Binary Tree
@@ -29,8 +28,11 @@ typedef struct bt {
     struct bt *right; // 1
 } bt;
 
-bt *create_bt(uint16_t value);
+// Create a binary tree node on the heap with null children and *value* value
+// Return a pointer to it
+bt *bt_create(uint16_t value);
 
-void free_bt(bt *node);
+// Free a binary tree node and all of its children recursively
+void bt_free(bt *node);
 
 #endif /* binarytree_h */

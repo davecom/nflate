@@ -45,7 +45,7 @@ int main(int argc, const char * argv[]) {
     
     size_t uncompressed_length = 0;
     uint8_t *uncompressed = nflate(gzf->data, gzf->data_length, &uncompressed_length);
-    printf("%s", uncompressed);
+    //printf("%s", uncompressed);
 
     // CRC is on uncompressed data
     if (!doCRC32Check(uncompressed, uncompressed_length, gzf->CRC32)) {

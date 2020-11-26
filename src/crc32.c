@@ -16,9 +16,22 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
+#include <stddef.h>
 #include "crc32.h"
 
+// This code is adapted from both RFC 1952 and Wikipedia's page on CRC
+// https://tools.ietf.org/html/rfc1952#section-8.1.1.6.2
 // https://en.wikipedia.org/wiki/Cyclic_redundancy_check#CRC-32_algorithm
+// The table code is originally Copyright 1996 L. Peter Deutsch and released under
+// a permissive license:
+//   Copyright (c) 1996 L. Peter Deutsch
+//
+//   Permission is granted to copy and distribute this document for any
+//   purpose and without charge, including translations into other
+//   languages and incorporation into compilations, provided that the
+//   copyright notice and this notice are preserved, and that any
+//   substantive changes or deletions from the original are clearly
+//   marked.
 bool doCRC32Check(uint8_t *data, size_t length, uint32_t crc_check) {
     uint32_t crc32 = 0xFFFFFFFF;
     uint32_t lookup_table[256];
@@ -26,7 +39,6 @@ bool doCRC32Check(uint8_t *data, size_t length, uint32_t crc_check) {
     // code from RFC 1952 for table
     // https://tools.ietf.org/html/rfc1952#section-8.1.1.6.2
     uint32_t c;
-
     int n, k;
     for (n = 0; n < 256; n++) {
         c = (uint32_t) n;

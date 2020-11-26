@@ -34,7 +34,7 @@
 // generate huffman code tree
 // code prior to tree creation adapted from RFC 1951 section 3.2.2
 // https://tools.ietf.org/html/rfc1951
-void generate_tree(uint8_t *code_lengths, bt *tree_root, int num_symbols) {
+static void generate_tree(uint8_t *code_lengths, bt *tree_root, int num_symbols) {
     int bl_count[MAX_BITS] = {0};
     for (int i = 0; i < num_symbols; i++) {
         bl_count[code_lengths[i]]++;
@@ -59,41 +59,38 @@ void generate_tree(uint8_t *code_lengths, bt *tree_root, int num_symbols) {
                 if (bit) { // 1, right
                     if (current->right == NULL) {
                         if (i == 0) {
-                            current->right = create_bt(n);
+                            current->right = bt_create(n);
                         } else {
-                            current->right = create_bt(NO_SYMBOL);
+                            current->right = bt_create(NO_SYMBOL);
                         }
                     }
                     current = current->right;
                 } else { // 0, left
                     if (current->left == NULL) {
                         if (i == 0) {
-                            current->left = create_bt(n);
+                            current->left = bt_create(n);
                         } else {
-                            current->left = create_bt(NO_SYMBOL);
+                            current->left = bt_create(NO_SYMBOL);
                         }
                     }
                     current = current->left;
                 }
             }
             //printf("%d \t %d \t %d\n", code, n, current->value);
-            if (n > 284) {
-                printf("yup");
-            }
             next_code[len]++;
         }
     }
 }
 
-uint16_t get_symbol(bitstream *bs, bt *root) {
+static uint16_t get_symbol(bitstream *bs, bt *root) {
     bt *current = root;
     do {
-        current = read_bit(bs) ? current->right : current->left;
+        current = bs_read_bit(bs) ? current->right : current->left;
     } while ((current->left != NULL) || (current->right != NULL));
     return current->value;
 }
 
-void expand(bitstream *bs, bt *len_lit_tree, bt *dist_tree, uint8_t **output_buffer, size_t *output_buffer_length) {
+static void expand(bitstream *bs, bt *len_lit_tree, bt *dist_tree, uint8_t **output_buffer, size_t *output_buffer_length) {
     // must have some starting space; arbitrarily start with 1024 bytes
     size_t insert_location = 0;
     if (*output_buffer == NULL) {
@@ -127,7 +124,7 @@ void expand(bitstream *bs, bt *len_lit_tree, bt *dist_tree, uint8_t **output_buf
                 int difference = last_symbol - 257;
                 int extra_bits = (difference / 4) - 1;
                 // length = 2 ^ (extra_bits + 2) + (2 ^ extra_bits * (difference % 4)) + 3
-                int additional_amount = (int)read_bits_rev(bs, extra_bits);
+                int additional_amount = (int)bs_read_bits_rev(bs, extra_bits);
                 int starter_length = (1 << (extra_bits + 2)) + ((1 << extra_bits) * (difference % 4)) + 3;
                 length = starter_length + additional_amount;
             } else if (last_symbol == 285) {
@@ -140,7 +137,7 @@ void expand(bitstream *bs, bt *len_lit_tree, bt *dist_tree, uint8_t **output_buf
             uint16_t distance_code = 0;
             int distance = 0;
             if (dist_tree == NULL) { // must be fixed distances of 5 bit each (fixed block)
-                distance_code = (uint8_t)read_bits_rev(bs, 5);
+                distance_code = (uint8_t)bs_read_bits_rev(bs, 5);
             } else { // dynamic distance must be read
                 distance_code = get_symbol(bs, dist_tree);
             }
@@ -148,7 +145,7 @@ void expand(bitstream *bs, bt *len_lit_tree, bt *dist_tree, uint8_t **output_buf
                 distance = distance_code + 1;
             } else if (distance_code < 30) {
                 int extra_bits = ((distance_code / 2)) - 1;
-                int additional_amount = (int)read_bits_rev(bs, extra_bits);
+                int additional_amount = (int)bs_read_bits_rev(bs, extra_bits);
                 // distance = 2 ^ (extra_bits + 1) + (2 ^ extra_bits * (distance_code % 2)) + 1
                 int starter_distance = (1 << (extra_bits + 1)) + ((1 << extra_bits) * (distance_code % 2)) + 1;
                 distance = starter_distance + additional_amount;
@@ -182,7 +179,7 @@ void expand(bitstream *bs, bt *len_lit_tree, bt *dist_tree, uint8_t **output_buf
 }
 
 // this is specified by RFC 1951 section 3.2.6
-void nflate_fixed_block(bitstream *bs, uint8_t **output_buffer, size_t *output_buffer_length) {
+static void nflate_fixed_block(bitstream *bs, uint8_t **output_buffer, size_t *output_buffer_length) {
     uint8_t *code_lengths = calloc(NUM_LIT_LEN_SYMBOLS, 1);
     // build fixed table
     for (int i = 0; i < NUM_LIT_LEN_SYMBOLS; i++) {
@@ -198,18 +195,18 @@ void nflate_fixed_block(bitstream *bs, uint8_t **output_buffer, size_t *output_b
     }
     
 
-    bt *lit_len_tree_root = create_bt(NO_SYMBOL);
+    bt *lit_len_tree_root = bt_create(NO_SYMBOL);
     generate_tree(code_lengths, lit_len_tree_root, NUM_LIT_LEN_SYMBOLS);
     
     expand(bs, lit_len_tree_root, NULL, output_buffer, output_buffer_length);
     
     
     free(code_lengths);
-    free_bt(lit_len_tree_root);
+    bt_free(lit_len_tree_root);
 }
 
 // this is specified by RFC 1951 section 3.2.7
-uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, bt *huffman_tree, int alphabet_size) {
+static uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, bt *huffman_tree, int alphabet_size) {
     uint8_t *code_lengths = calloc(alphabet_size, 1);
     uint16_t symbol = 0;
     int num_processed = 0;
@@ -219,19 +216,19 @@ uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, bt *huffman_tree, i
             code_lengths[num_processed] = symbol;
             num_processed++;
         } else if (symbol == 16) {
-            int extra = ((int)read_bits_rev(bs, 2)) + 3;
+            int extra = ((int)bs_read_bits_rev(bs, 2)) + 3;
             for (int i = 0; i < extra; i++) {
                 code_lengths[num_processed] = code_lengths[num_processed-1];
                 num_processed++;
             }
         } else if (symbol == 17) {
-            int extra = ((int)read_bits_rev(bs, 3)) + 3;
+            int extra = ((int)bs_read_bits_rev(bs, 3)) + 3;
             for (int i = 0; i < extra; i++) {
                 code_lengths[num_processed] = 0;
                 num_processed++;
             }
         } else if (symbol == 18) {
-            int extra = ((int)read_bits_rev(bs, 7)) + 11;
+            int extra = ((int)bs_read_bits_rev(bs, 7)) + 11;
             for (int i = 0; i < extra; i++) {
                 code_lengths[num_processed] = 0;
                 num_processed++;
@@ -246,18 +243,18 @@ uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, bt *huffman_tree, i
 }
 
 // this is specified by RFC 1951 section 3.2.7
-void nflate_dynamic_block(bitstream *bs, uint8_t **output_buffer, size_t *output_buffer_length) {
+static void nflate_dynamic_block(bitstream *bs, uint8_t **output_buffer, size_t *output_buffer_length) {
     // build dynamic tables
-    int HLIT = ((int)read_bits_rev(bs, 5)) + 257; // name comes from RFC 1951
-    int HDIST = ((int)read_bits_rev(bs, 5)) + 1; // name comes from RFC 1951
-    int HCLEN = ((int)read_bits_rev(bs, 4)) + 4; // name comes from RFC 1951
+    int HLIT = ((int)bs_read_bits_rev(bs, 5)) + 257; // name comes from RFC 1951
+    int HDIST = ((int)bs_read_bits_rev(bs, 5)) + 1; // name comes from RFC 1951
+    int HCLEN = ((int)bs_read_bits_rev(bs, 4)) + 4; // name comes from RFC 1951
     
     // build code length alphabet
     uint8_t *code_lengths = calloc(19, 1);
     int code_length_indices[19] = {16, 17, 18,
         0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
     for (int i = 0; i < HCLEN; i++) {
-        uint8_t code_length = read_bits_rev(bs, 3);
+        uint8_t code_length = bs_read_bits_rev(bs, 3);
         code_lengths[code_length_indices[i]] = code_length;
     }
     
@@ -265,42 +262,36 @@ void nflate_dynamic_block(bitstream *bs, uint8_t **output_buffer, size_t *output
 //        printf("%d \t %d\n", i, code_lengths[i]);
 //    }
 
-    bt *huffman_tree = create_bt(NO_SYMBOL);
+    bt *huffman_tree = bt_create(NO_SYMBOL);
     
     generate_tree(code_lengths, huffman_tree, 19);
         
     // build literal/length tree
     uint8_t *lit_len_code_lengths = process_dynamic_huffman_code_lengths(bs, huffman_tree, HLIT);
-    bt *lit_len_tree = create_bt(NO_SYMBOL);
+    bt *lit_len_tree = bt_create(NO_SYMBOL);
     generate_tree(lit_len_code_lengths, lit_len_tree, HLIT);
-    
-    printf("made it here\n");
 
     // build distance tree
     uint8_t *dist_code_lengths = process_dynamic_huffman_code_lengths(bs, huffman_tree, HDIST);
-    bt *dist_tree = create_bt(NO_SYMBOL);
+    bt *dist_tree = bt_create(NO_SYMBOL);
     generate_tree(dist_code_lengths, dist_tree, HDIST);
-    
-    printf("made it here 2\n");
     
     expand(bs, lit_len_tree, dist_tree, output_buffer, output_buffer_length);
     
-    printf("made it here 3\n");
-    
     free(code_lengths);
-    free_bt(huffman_tree);
+    bt_free(huffman_tree);
     free(lit_len_code_lengths);
-    free_bt(lit_len_tree);
+    bt_free(lit_len_tree);
     free(dist_code_lengths);
-    free_bt(dist_tree);
+    bt_free(dist_tree);
 }
 
 // this is specified by RFC 1951 section 3.2.4
-void nflate_uncompressed_block(bitstream *bs, uint8_t **output_buffer, size_t *output_buffer_length) {
-    move_to_boundary(bs);
+static void nflate_uncompressed_block(bitstream *bs, uint8_t **output_buffer, size_t *output_buffer_length) {
+    bs_move_to_boundary(bs);
     // LEN and NLEN are two bytes each, NLEN is 1-complement of LEN
-    uint16_t LEN = (uint16_t)read_bits_rev(bs, 16);
-    uint16_t NLEN = (uint16_t)read_bits_rev(bs, 16);
+    uint16_t LEN = (uint16_t)bs_read_bits_rev(bs, 16);
+    uint16_t NLEN = (uint16_t)bs_read_bits_rev(bs, 16);
     if ((LEN ^ NLEN) != 0xFFFF) {
         fprintf(stderr, "LEN is not the one's complement of NLEN.\n");
     }
@@ -315,10 +306,13 @@ void nflate_uncompressed_block(bitstream *bs, uint8_t **output_buffer, size_t *o
         *output_buffer = realloc(*output_buffer, ((*output_buffer_length) + LEN));
         *output_buffer_length = ((*output_buffer_length) + LEN);
     }
-    read_bytes(bs, (*output_buffer) + insert_location, LEN);
+    bs_read_bytes(bs, (*output_buffer) + insert_location, LEN);
 }
 
-
+// *compressed* is the DEFLATE compressed data to be inflated
+// *length* is the length of that data in bytes
+// *result_length* is a pointer to a place to hold the length of the uncompressed data in bytes
+// returns the uncompressed data as a byte pointer
 uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
     uint8_t *reconstituted = NULL;
     
@@ -327,8 +321,8 @@ uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
     bool BFINAL; // name comes from RFC 1951
     do {
         // read block header
-        BFINAL = read_bit(bs); // is this the last block?
-        uint64_t BTYPE = read_bits_rev(bs, 2); // name comes from RFC 1951
+        BFINAL = bs_read_bit(bs); // is this the last block?
+        uint64_t BTYPE = bs_read_bits_rev(bs, 2); // name comes from RFC 1951
         
         switch (BTYPE) {
             case 0: // uncompressed
