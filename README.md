@@ -59,7 +59,26 @@ I used several external resources to learn more about DEFLATE/gzip to create thi
 
 ## License
 
-I wrote almost all of the code in this naive implementation. I am releasing it under the Apache License 2.0 (see `LICENSE`) which means you can use it as you would like to as long as you post the license with it and give me credit. Some very small snippets are based on pseudocode from Wikipedia or code from RFC 1951. They are marked as such where they occur. The very small portion of code from RFC 1951 is under the following license:
+I wrote almost all of the code in this naive implementation. I am releasing it under the Apache License 2.0 (see `LICENSE` file) which means you can use it as you would like to as long as you post the license with it and give me credit. You will find these notices at the top of each source code file:
+
+```
+Copyright (c) 2020 David Kopec
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+
+Some very small snippets are based on pseudocode from Wikipedia or code from RFC 1951. They are marked as such where they occur. The very small portion of code from RFC 1951 is under the following license:
 
 ```
 Copyright (c) 1996 L. Peter Deutsch
