@@ -40,9 +40,11 @@
       useCustomWorkingDirectory = "YES"
       customWorkingDirectory = "$PROJECT_DIR"
       ignoresPersistentStateOnLaunch = "NO"
-      debugDocumentVersioning = "YES"
+      debugDocumentVersioning = "NO"
       debugServiceExtension = "internal"
-      allowLocationSimulation = "YES">
+      enableGPUValidationMode = "1"
+      allowLocationSimulation = "NO"
+      GPUProfilerEnabled = "No">
       <PathRunnable
          runnableDebuggingMode = "0"
          FilePath = "/Users/dave/Documents/Projects/nflate/nflate">

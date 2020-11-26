@@ -181,6 +181,7 @@ void expand(bitstream *bs, bt *len_lit_tree, bt *dist_tree, uint8_t **output_buf
     *output_buffer = realloc(*output_buffer, *output_buffer_length);
 }
 
+// this is specified by RFC 1951 section 3.2.6
 void nflate_fixed_block(bitstream *bs, uint8_t **output_buffer, size_t *output_buffer_length) {
     uint8_t *code_lengths = calloc(NUM_LIT_LEN_SYMBOLS, 1);
     // build fixed table
@@ -207,9 +208,9 @@ void nflate_fixed_block(bitstream *bs, uint8_t **output_buffer, size_t *output_b
     free_bt(lit_len_tree_root);
 }
 
+// this is specified by RFC 1951 section 3.2.7
 uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, bt *huffman_tree, int alphabet_size) {
     uint8_t *code_lengths = calloc(alphabet_size, 1);
-    uint16_t last_symbol = 0;
     uint16_t symbol = 0;
     int num_processed = 0;
     do {
@@ -220,7 +221,7 @@ uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, bt *huffman_tree, i
         } else if (symbol == 16) {
             int extra = ((int)read_bits_rev(bs, 2)) + 3;
             for (int i = 0; i < extra; i++) {
-                code_lengths[num_processed] = last_symbol;
+                code_lengths[num_processed] = code_lengths[num_processed-1];
                 num_processed++;
             }
         } else if (symbol == 17) {
@@ -239,12 +240,12 @@ uint8_t *process_dynamic_huffman_code_lengths(bitstream *bs, bt *huffman_tree, i
             fprintf(stderr, "Error, found unexpected symbol > 18 reading lit/length table.\n");
         }
         
-        last_symbol = symbol;
     } while (num_processed < alphabet_size);
     
     return code_lengths;
 }
 
+// this is specified by RFC 1951 section 3.2.7
 void nflate_dynamic_block(bitstream *bs, uint8_t **output_buffer, size_t *output_buffer_length) {
     // build dynamic tables
     int HLIT = ((int)read_bits_rev(bs, 5)) + 257; // name comes from RFC 1951
@@ -294,6 +295,29 @@ void nflate_dynamic_block(bitstream *bs, uint8_t **output_buffer, size_t *output
     free_bt(dist_tree);
 }
 
+// this is specified by RFC 1951 section 3.2.4
+void nflate_uncompressed_block(bitstream *bs, uint8_t **output_buffer, size_t *output_buffer_length) {
+    move_to_boundary(bs);
+    // LEN and NLEN are two bytes each, NLEN is 1-complement of LEN
+    uint16_t LEN = (uint16_t)read_bits_rev(bs, 16);
+    uint16_t NLEN = (uint16_t)read_bits_rev(bs, 16);
+    if ((LEN ^ NLEN) != 0xFFFF) {
+        fprintf(stderr, "LEN is not the one's complement of NLEN.\n");
+    }
+    // copy bytes over
+    // make room for them
+    size_t insert_location = 0;
+    if (*output_buffer == NULL) {
+        *output_buffer = realloc(*output_buffer, LEN);
+        *output_buffer_length = LEN;
+    } else {
+        insert_location = *output_buffer_length;
+        *output_buffer = realloc(*output_buffer, ((*output_buffer_length) + LEN));
+        *output_buffer_length = ((*output_buffer_length) + LEN);
+    }
+    read_bytes(bs, (*output_buffer) + insert_location, LEN);
+}
+
 
 uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
     uint8_t *reconstituted = NULL;
@@ -308,6 +332,7 @@ uint8_t *nflate(uint8_t *compressed, size_t length, size_t *result_length) {
         
         switch (BTYPE) {
             case 0: // uncompressed
+                nflate_uncompressed_block(bs, &reconstituted, result_length);
                 break;
             case 1: // fixed huffman codes
             {

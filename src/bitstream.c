@@ -16,6 +16,9 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "bitstream.h"
 
 bitstream *create_bitstream(uint8_t *data, size_t length) {
@@ -51,4 +54,19 @@ uint64_t read_bits_rev(bitstream *bs, int n) {
         bits |= (read_bit(bs) << i);
     }
     return bits;
+}
+
+// read bytes directly into *dest*
+void read_bytes(bitstream *bs, uint8_t *dest, size_t length) {
+    memcpy(dest, bs->data + (bs->bitIndex / 8), length);
+    bs->bitIndex += (length * 8);
+}
+
+// go to next byte boundary if not already on one
+void move_to_boundary(bitstream *bs) {
+    // are we on a boundary?
+    if (bs->bitIndex % 8 != 0) {
+        // skip any bits until the next byte boundary
+        bs->bitIndex = bs->bitIndex + (8 - (bs->bitIndex % 8));
+    }
 }

@@ -19,8 +19,6 @@
 #ifndef bitstream_h
 #define bitstream_h
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -42,5 +40,10 @@ uint64_t read_bits(bitstream *bs, int n);
 // reversed, so in same ordering as originally in within the byte
 uint64_t read_bits_rev(bitstream *bs, int n);
 
+// read bytes, incrementing bitIndex with as many as needed
+void read_bytes(bitstream *bs, uint8_t *dest, size_t length);
+
+// go to next byte boundary if not already on one
+void move_to_boundary(bitstream *bs);
 
 #endif /* bitstream_h */
